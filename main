@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IVIS Group Optimizer</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; }
+    input, textarea, button, select { margin: 0.5rem 0; padding: 0.5rem; width: 100%; }
+    pre { background: #f4f4f4; padding: 1rem; overflow-x: auto; }
+    .warning { color: red; font-weight: bold; white-space: pre-wrap; }
+    .group-prefs { margin: 1rem 0; }
+    .group-prefs label { display: block; margin-top: 0.5rem; }
+  </style>
+</head>
+<body>
+  <h1>IVIS Group Optimizer</h1>
+
+  <label for="dataInput">Paste Data (Tab or Comma Delimited):</label>
+  <textarea id="dataInput" rows="10" placeholder="Example:\n123\t3.0E+5\n456\t2.8E+5 or 123,3.0E+5"></textarea>
+
+  <label for="numGroups">Number of Groups:</label>
+  <input type="number" id="numGroups" min="1" required oninput="generateGroupPreferences()">
+
+  <label for="micePerGroup">Mice per Group:</label>
+  <input type="number" id="micePerGroup" min="1" required>
+
+  <div id="groupPreferences" class="group-prefs"></div>
+
+  <button type="button" onclick="optimizeGroups()">Optimize Groups</button>
+  <button type="button" onclick="rerunOptimization()">Rerun Optimization</button>
+
+  <div id="warning" class="warning"></div>
+
+  <h2>Optimized Group Assignments</h2>
+  <pre id="output"></pre>
+
+  <script>
+    let lastMice = [], lastOmitted = [], lastPrefs = [], lastNumGroups = 0, lastMicePerGroup = 0;
+
+    function parseData(input) {
+      const lines = input.trim().split('\n');
+      const parsed = [], omitted = [], errors = [];
+      lines.forEach((row, index) => {
+        const parts = row.includes(',') ? row.split(',') : row.split('\t');
+        if (parts.length < 2) {
+          errors.push(`Invalid row ${index+1}: '${row}'`);
+          return;
+        }
+        const id = parts[0].trim();
+        const value = parseFloat(parts[1].trim());
+        if (!id || isNaN(value)) {
+          errors.push(`Malformed data at row ${index+1}: '${row}'`);
+        } else if (value < 2e5 || value > 7.5e6) {
+          omitted.push({ id, fluorescence: value });
+        } else {
+          parsed.push({ id, fluorescence: value });
+        }
+      });
+      return { parsed, omitted, errors };
+    }
+
+    function shuffle(array) {
+      for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+      return array;
+    }
+
+    function generateGroupPreferences() {
+      const numGroups = parseInt(document.getElementById('numGroups').value) || 0;
+      const container = document.getElementById('groupPreferences');
+      container.innerHTML = '';
+      if (numGroups < 1) return;
+      for (let i = 0; i < numGroups; i++) {
+        const lbl = document.createElement('label');
+        lbl.textContent = `Group ${i+1} Preference:`;
+        const sel = document.createElement('select');
+        sel.id = `groupPref${i}`;
+        ['similar','greater','smaller'].forEach(opt => {
+          const o = document.createElement('option');
+          o.value = opt;
+          o.textContent = opt.charAt(0).toUpperCase() + opt.slice(1);
+          sel.appendChild(o);
+        });
+        container.appendChild(lbl);
+        container.appendChild(sel);
+      }
+    }
+
+    function assignGroupsOptimized(mice, numGroups, micePerGroup, prefs, maxTries=1000, tolerance=0.3e6) {
+      let bestGroups = null, bestSpread = Infinity;
+      const totalMice = mice.length;
+      const globalAvg = mice.reduce((sum, m) => sum + m.fluorescence, 0) / totalMice;
+
+      for (let t = 0; t < maxTries; t++) {
+        const shuffled = shuffle([...mice]);
+        const groups = Array.from({ length: numGroups }, () => []);
+        const sums = Array(numGroups).fill(0);
+
+        for (const m of shuffled) {
+          const candidates = [];
+          for (let i = 0; i < numGroups; i++) {
+            if (groups[i].length < micePerGroup) candidates.push(i);
+          }
+
+          let chosen = candidates[0];
+          let bestDelta = Infinity;
+          for (const i of candidates) {
+            let target = globalAvg;
+            if (prefs[i] === 'greater') target += tolerance / 2;
+            if (prefs[i] === 'smaller') target -= tolerance / 2;
+            const newAvg = (sums[i] + m.fluorescence) / (groups[i].length + 1);
+            const delta = Math.abs(newAvg - target);
+            if (delta < bestDelta) {
+              bestDelta = delta;
+              chosen = i;
+            }
+          }
+
+          groups[chosen].push(m);
+          sums[chosen] += m.fluorescence;
+        }
+
+        const avgs = sums.map(s => s / micePerGroup);
+        const spread = Math.max(...avgs) - Math.min(...avgs);
+        if (spread <= tolerance) {
+          return groups;
+        }
+        if (spread < bestSpread) {
+          bestSpread = spread;
+          bestGroups = groups;
+        }
+      }
+      return bestGroups;
+    }
+
+    function optimizeGroups() {
+      const raw = document.getElementById('dataInput').value;
+      const numGroups = parseInt(document.getElementById('numGroups').value);
+      const micePerGroup = parseInt(document.getElementById('micePerGroup').value);
+      const { parsed: mice, omitted, errors } = parseData(raw);
+      const prefs = Array.from({ length: numGroups }, (_, i) => document.getElementById(`groupPref${i}`)?.value || 'similar');
+
+      const warningBox = document.getElementById('warning');
+      let msg = errors.join('\n');
+      msg += `${mice.length} usable entries.`;
+      if (omitted.length > 0) {
+        msg += `\n${omitted.length} exclusions:`;
+        omitted.forEach(o => {
+          msg += `\n  ${o.id}: ${o.fluorescence.toExponential(2)}`;
+        });
+      }
+      warningBox.textContent = msg;
+
+      if (mice.length !== numGroups * micePerGroup) {
+        alert(`Mismatch: ${mice.length} usable entries cannot form ${numGroups} groups of ${micePerGroup}.`);
+        return;
+      }
+
+      lastMice = mice;
+      lastOmitted = omitted;
+      lastPrefs = prefs;
+      lastNumGroups = numGroups;
+      lastMicePerGroup = micePerGroup;
+
+      runAssignment(mice, numGroups, micePerGroup, prefs, omitted);
+    }
+
+    function rerunOptimization() {
+      if (!lastMice.length) return alert('Please run optimizer first.');
+      runAssignment(lastMice, lastNumGroups, lastMicePerGroup, lastPrefs, lastOmitted);
+    }
+
+    function runAssignment(mice, numGroups, micePerGroup, prefs, omitted) {
+      const groups = assignGroupsOptimized(mice, numGroups, micePerGroup, prefs);
+      let out = '';
+
+      groups.forEach((g, i) => {
+        const sum = g.reduce((a, b) => a + b.fluorescence, 0);
+        const avg = sum / g.length;
+        out += `Group ${i+1} (Avg: ${avg.toExponential(2)}):\n`;
+        g.forEach(m => {
+          out += `  ${m.id}: ${m.fluorescence.toExponential(2)}\n`;
+        });
+        out += '\n';
+      });
+
+      if (omitted.length > 0) {
+        out += '--- Omitted Data Points ---\n';
+        omitted.forEach(o => {
+          out += `  ${o.id}: ${o.fluorescence.toExponential(2)}\n`;
+        });
+      }
+
+      document.getElementById('output').textContent = out;
+    }
+  </script>
+</body>
+</html>
