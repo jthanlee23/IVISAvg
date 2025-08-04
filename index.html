@@ -1,52 +1,152 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>IVIS Group Optimizer</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
   <style>
-    body { font-family: Arial, sans-serif; margin: 2rem; }
-    input, textarea, button, select { margin: 0.5rem 0; padding: 0.5rem; width: 100%; }
-    pre { background: #f4f4f4; padding: 1rem; overflow-x: auto; }
-    .warning { color: red; font-weight: bold; white-space: pre-wrap; }
-    .group-prefs, .filter-range, .tolerance-range { margin: 1rem 0; }
-    .group-prefs label, .filter-range label, .tolerance-range label { display: block; margin-top: 0.5rem; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f9fafb;
+      margin: 0;
+      padding: 2rem;
+      color: #111827;
+      display: flex;
+      justify-content: center;
+    }
+
+    .container {
+      max-width: 800px;
+      width: 100%;
+      background: white;
+      border-radius: 12px;
+      padding: 2rem;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 1.8rem;
+      margin-bottom: 1.5rem;
+      color: #1f2937;
+    }
+
+    label {
+      display: block;
+      margin: 0.8rem 0 0.3rem;
+      font-weight: 600;
+    }
+
+    input, textarea, select {
+      width: 100%;
+      padding: 0.7rem;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 1rem;
+      background-color: #f9fafb;
+      transition: border-color 0.3s;
+    }
+
+    input:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: #3b82f6;
+      background-color: white;
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 100px;
+    }
+
+    button {
+      margin-top: 1.2rem;
+      padding: 0.7rem 1.2rem;
+      border: none;
+      border-radius: 8px;
+      background-color: #3b82f6;
+      color: white;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.3s;
+      width: 100%;
+    }
+
+    button:hover {
+      background-color: #2563eb;
+    }
+
+    .warning {
+      color: #dc2626;
+      font-weight: 600;
+      margin-top: 1rem;
+      white-space: pre-wrap;
+      background-color: #fef2f2;
+      padding: 1rem;
+      border-radius: 8px;
+      border: 1px solid #fca5a5;
+    }
+
+    .output {
+      background: #f3f4f6;
+      padding: 1rem;
+      margin-top: 1.5rem;
+      border-radius: 8px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      font-family: monospace;
+    }
+
+    .section {
+      margin-top: 2rem;
+    }
+
+    .group-prefs select {
+      margin-bottom: 1rem;
+    }
   </style>
 </head>
 <body>
-  <h1>IVIS Group Optimizer</h1>
+  <div class="container">
+    <h1>IVIS Group Optimizer</h1>
 
-  <label for="dataInput">Paste Data (Tab or Comma Delimited):</label>
-  <textarea id="dataInput" rows="10" placeholder="Example:\n123\t3.0E+5\n456\t2.8E+5 or 123,3.0E+5"></textarea>
+    <label for="dataInput">Paste Data (Tab or Comma Delimited):</label>
+    <textarea id="dataInput" placeholder="Example:&#10;123\t3.0E+5&#10;456\t2.8E+5 or 123,3.0E+5"></textarea>
 
-  <div class="filter-range">
-    <label for="lowerLimit">Lower Fluorescence Limit:</label>
-    <input type="number" id="lowerLimit" value="200000" step="any">
-    <label for="upperLimit">Upper Fluorescence Limit:</label>
-    <input type="number" id="upperLimit" value="7500000" step="any">
+    <div class="section">
+      <label for="lowerLimit">Lower Fluorescence Limit:</label>
+      <input type="number" id="lowerLimit" value="200000" step="any">
+
+      <label for="upperLimit">Upper Fluorescence Limit:</label>
+      <input type="number" id="upperLimit" value="7500000" step="any">
+    </div>
+
+    <div class="section">
+      <label for="tolerance">Average Spread Tolerance (±):</label>
+      <input type="number" id="tolerance" value="300000" step="any">
+    </div>
+
+    <div class="section">
+      <label for="numGroups">Number of Groups:</label>
+      <input type="number" id="numGroups" min="1" required oninput="generateGroupPreferences()">
+
+      <label for="micePerGroup">Mice per Group:</label>
+      <input type="number" id="micePerGroup" min="1" required>
+
+      <div id="groupPreferences" class="group-prefs"></div>
+    </div>
+
+    <button onclick="optimizeGroups()">Optimize Groups</button>
+    <button onclick="rerunOptimization()" style="background-color: #6b7280;">Rerun Optimization</button>
+
+    <div id="warning" class="warning" style="display:none;"></div>
+
+    <div class="section">
+      <h2>Optimized Group Assignments</h2>
+      <div id="output" class="output"></div>
+    </div>
   </div>
-
-  <div class="tolerance-range">
-    <label for="tolerance">Average Spread Tolerance (±):</label>
-    <input type="number" id="tolerance" value="300000" step="any">
-  </div>
-
-  <label for="numGroups">Number of Groups:</label>
-  <input type="number" id="numGroups" min="1" required oninput="generateGroupPreferences()">
-
-  <label for="micePerGroup">Mice per Group:</label>
-  <input type="number" id="micePerGroup" min="1" required>
-
-  <div id="groupPreferences" class="group-prefs"></div>
-
-  <button type="button" onclick="optimizeGroups()">Optimize Groups</button>
-  <button type="button" onclick="rerunOptimization()">Rerun Optimization</button>
-
-  <div id="warning" class="warning"></div>
-
-  <h2>Optimized Group Assignments</h2>
-  <pre id="output"></pre>
-
   <script>
     let lastMice = [], lastOmitted = [], lastPrefs = [], lastNumGroups = 0, lastMicePerGroup = 0, lastTolerance = 0;
 
