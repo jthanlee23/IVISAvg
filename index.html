@@ -147,8 +147,15 @@
       <div id="output" class="output"></div>
     </div>
   </div>
+
   <script>
     let lastMice = [], lastOmitted = [], lastPrefs = [], lastNumGroups = 0, lastMicePerGroup = 0, lastTolerance = 0;
+
+    function updateWarning(msg) {
+      const warningBox = document.getElementById('warning');
+      warningBox.textContent = msg;
+      warningBox.style.display = msg.trim() ? 'block' : 'none';
+    }
 
     function parseData(input) {
       const lower = parseFloat(document.getElementById('lowerLimit').value);
@@ -252,14 +259,13 @@
       const { parsed: mice, omitted, errors, lower, upper } = parseData(raw);
       const prefs = Array.from({ length: numGroups }, (_, i) => document.getElementById(`groupPref${i}`)?.value || 'similar');
 
-      const warningBox = document.getElementById('warning');
       let msg = errors.join('\n');
-      msg += `${mice.length} usable entries (between ${lower} and ${upper}).`;
+      msg += `\n${mice.length} usable entries (between ${lower} and ${upper}).`;
       if (omitted.length > 0) {
         msg += `\n${omitted.length} exclusions:`;
         omitted.forEach(o => { msg += `\n  ${o.id}: ${o.fluorescence.toExponential(2)}`; });
       }
-      warningBox.textContent = msg;
+      updateWarning(msg);
 
       if (mice.length !== numGroups * micePerGroup) {
         alert(`Mismatch: ${mice.length} usable entries cannot form ${numGroups} groups of ${micePerGroup}.`);
